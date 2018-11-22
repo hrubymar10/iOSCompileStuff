@@ -1,0 +1,6 @@
+SourcesAndScripts/CompiledLibs/*
+!SourcesAndScripts/CompiledLibs/.gitkeep
+SourcesAndScripts/Sources/*
+!SourcesAndScripts/Sources/.gitkeep
+SourcesAndScripts/Projects/*
+!SourcesAndScripts/Projects/.gitkeep
