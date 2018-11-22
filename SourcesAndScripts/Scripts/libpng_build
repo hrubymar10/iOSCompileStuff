@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#
+# libpng_build
+# Martin Hrubý (hrubymar10), 2018
+#
+
+LIBPNG_VERSION="1.6.35"
+
+XCODE_ROOT=`xcode-select -print-path`
+IPHONE_SDKVERSION=`xcodebuild -showsdks | grep iphoneos | egrep "[[:digit:]]+\.[[:digit:]]+" -o | tail -1`
+
+time_interval_to_string() {
+        local START=$1
+        local END=$2
+
+        declare -i timestamp
+        declare -i days
+        declare -i hours
+        declare -i minutes
+        declare -i seconds
+        timestamp=$END-$START
+
+        days=$timestamp/60/60/24
+        hours=$((($timestamp-($days*60*60*24))/60/60))
+        minutes=$((($timestamp-($days*60*60*24)-($hours*60*60))/60))
+        seconds=$((($timestamp-($days*60*60*24)-($hours*60*60)-($minutes*60))))
+        if [ $days -eq 0 ]; then
+        if [ $hours -eq 0 ]; then
+                if [ $minutes -eq 0 ]; then
+                echo "==> Operation took $seconds seconds ..."
+                else
+                echo "==> Operation took $minutes minutes and $seconds seconds ..."
+                fi
+        else
+                echo "==> Operation took $hours hours $minutes minutes and $seconds seconds ..."
+        fi
+        else
+        echo "==> Operation took $days days $hours hours $minutes minutes and $seconds seconds ..."
+        fi
+}
+
+starttimestamp=$(date +%s)
+
+MY_PATH=$(cd `dirname $0` && pwd)
+if [ -z "$MY_PATH" ] ; then
+        # error; for some reason, the path is not accessible
+        # to the script (e.g. permissions re-evaled after suid)
+        echo 'Error: Script path is for some reason not accessible' >&2
+        exit 1  # fail
+fi
+cd "$MY_PATH"/../Sources
+
+if ! [ -x "$(command -v wget)" ]; then
+        echo 'Error: wget is not installed. Use for example Homebrew and install it. See https://brew.sh/' >&2
+        exit 1
+fi
+
+if xcode-select --install 2>&1 | grep installed; then
+        echo "==> Xcode Command Line Tools are installed..."
+else
+        echo "==> Xcode Command Line Tools aren't installed, installing..."
+        xcode-select --install
+fi
+
+rm -rf libpng*
+wget "http://prdownloads.sourceforge.net/libpng/libpng-$LIBPNG_VERSION.tar.xz?download" -O "libpng-$LIBPNG_VERSION.tar.xz"
+tar xf "libpng-$LIBPNG_VERSION.tar.xz"
+rm "libpng-$LIBPNG_VERSION.tar.xz"
+ln -s "libpng-$LIBPNG_VERSION" libpng
+cd "libpng-$LIBPNG_VERSION"
+
+export CC=$XCODE_ROOT/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang
+export CC_BASENAME=clang
+
+export CXX=$XCODE_ROOT/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++
+export CXX_BASENAME=clang++
+
+# avoid the `LDFLAGS` env to include the homebrew Cellar
+export LDFLAGS=""
+export CFLAGS="-O3 -arch i386 -arch x86_64 -isysroot $XCODE_ROOT/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator$IPHONE_SDKVERSION.sdk -mios-simulator-version-min=8.0 -Wno-error-implicit-function-declaration"
+make distclean
+./configure --disable-dependency-tracking --enable-static=yes --enable-shared=no --host=arm-apple-darwin
+make
+cp -rf .libs/libpng16.a ../libpng16_simulator.a
+
+export CFLAGS="-O3 -arch armv7 -arch arm64 -isysroot $XCODE_ROOT/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS$IPHONE_SDKVERSION.sdk -mios-version-min=8.0"
+make distclean
+./configure --host=arm-apple-darwin --prefix=$PREFIXDIR/iphone-build --disable-dependency-tracking --enable-static=yes --enable-shared=no
+make
+cp -rf .libs/libpng16.a ../libpng16_iphoneos.a
+lipo -create ../libpng16_simulator.a ../libpng16_iphoneos.a -o libpng16.a
+rm -rf ../libpng16*
+
+rm -rf ../../../lib/libpng16.a
+cp -rf libpng16.a ../../../lib/libpng16.a
+
+echo "==> DONE ..."
+echo
+time_interval_to_string "$starttimestamp" "$(date +%s)"
+echo
